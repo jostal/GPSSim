@@ -1,7 +1,7 @@
 import { SerialPort } from "serialport";
 import lineChunk from "@turf/line-chunk"
 
-export async function beginSimulation(portPath, routeData) {
+export function beginSimulation(portPath, routeData) {
   // split route into smaller chunks so travel at 6m/s with 500ms delay
   let chunks = lineChunk(routeData, 6, { units: 'meters' })
   const port = new SerialPort({
@@ -16,7 +16,26 @@ export async function beginSimulation(portPath, routeData) {
 
   // send coords to port
   let features = chunks.features
-  console.log(features.length)
+
+  // set start time in 10s so frontend and serial port are in sync
+  let startTime = new Date();
+  startTime.setSeconds(startTime.getSeconds() + 10);
+  sendSerial(port, features, startTime)
+
+  return JSON.stringify({
+    features: features,
+    startTime: startTime
+  });
+}
+
+async function sendSerial(port, features, startTime) {
+  let curTime = new Date();
+  while (startTime.getSeconds() > curTime.getSeconds()) {
+    curTime = new Date();
+    console.log(startTime.getSeconds() - curTime.getSeconds())
+    await wait(500)
+  }
+
   for (const feature of features) {
     let coords = feature.geometry.coordinates
     for (const coord of coords) {
@@ -29,7 +48,7 @@ export async function beginSimulation(portPath, routeData) {
           return console.log('Write error: ', err)
         }
 
-        console.log('Sent: ', coordString)
+        // console.log('Sent: ', coordString)
         port.close()
       })
       await wait(1000)
@@ -40,7 +59,7 @@ export async function beginSimulation(portPath, routeData) {
     console.log('Error: ', err.message)
   })
 
-  return JSON.stringify(features);
+  return { succ: true }
 }
 
 function wait(milli) {
